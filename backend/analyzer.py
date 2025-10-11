@@ -3,42 +3,30 @@ from PIL import Image
 import easyocr
 from profanity_check import predict_prob
 
-sentiment_analyzer = pipeline("sentiment-analysis", model="cardiffnlp/twitter-roberta-base-sentiment-latest")
 
-summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
-topic_classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+
+
+summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")
+
+
+topic_classifier = pipeline("zero-shot-classification", model="MoritzLaurer/deberta-v3-small-zeroshot-v1")
 
 
 image_classifier = pipeline("image-classification", model="google/vit-base-patch16-224")
-ocr_reader = easyocr.Reader(['en']) 
-
-
+ocr_reader = easyocr.Reader(['en'], gpu=False) 
 
 
 def analyze_sentiment(text: str):
     """
-    Analyzes sentiment using the loaded model and robustly maps the output label.
+    Analyzes sentiment. Note: This smaller model only outputs POSITIVE or NEGATIVE.
     """
-    try:
-        result = sentiment_analyzer(text)[0]
-        label = result['label']
-
-
-        if label.startswith('LABEL_'):
-            label_id = int(label.split('_')[-1])
-            config_labels = sentiment_analyzer.model.config.id2label
-            readable_label = config_labels[label_id].capitalize()
-        else:
-            readable_label = label.capitalize()
-
-        return {"label": readable_label, "score": result['score']}
-    except Exception as e:
-        print(f"Error during sentiment analysis: {e}")
-        return {"label": "Neutral", "score": 0.0}
+    result = sentiment_analyzer(text)[0]
+    return {"label": result['label'], "score": result['score']}
 
 def summarize_text(text: str):
-    if len(text.split()) > 50:
-        result = summarizer(text, max_length=50, min_length=25, do_sample=False)
+    if len(text.split()) > 40:
+        result = summarizer(text, max_length=50, min_length=20, do_sample=False)
         return result[0]['summary_text']
     return "Text is too short to summarize."
 
@@ -64,27 +52,29 @@ def check_toxicity(text: str):
         return {"is_toxic": False, "score": 0.0}
     
     score = predict_prob([text])[0]
-    is_toxic = score > 0.6 
+    is_toxic = score > 0.6 # Set a threshold
     return {"is_toxic": is_toxic, "score": score}
 
 
+
 def generate_automated_response(nlp_results: dict, cv_results: dict):
-    sentiment = nlp_results.get('sentiment', {}).get('label', 'Neutral')
+    sentiment = nlp_results.get('sentiment', {}).get('label', 'NEUTRAL')
     is_toxic_text = nlp_results.get('toxicity', {}).get('is_toxic', False)
-    
     is_toxic_ocr = cv_results.get('ocr_toxicity', {}).get('is_toxic', False)
     image_cat = cv_results.get('classification', '')
-
+    
     if is_toxic_text or is_toxic_ocr:
         return "Warning: Potentially toxic content detected. Your submission will be reviewed by a moderator."
 
-    if sentiment == 'Negative':
+   
+    if sentiment == 'NEGATIVE':
         return "We are sorry to hear you had a negative experience. A team member will review your feedback shortly."
         
-    if sentiment == 'Positive':
+    if sentiment == 'POSITIVE':
         if 'product' in image_cat.lower():
-            return "Thank you for the positive feedback! We're glad you're enjoying the product."
+             return "Thank you for the positive feedback! We're glad you're enjoying the product."
         else:
             return "Thank you for your positive feedback! We appreciate you sharing with us."
 
     return "Thank you for your feedback. We have received your submission."
+
