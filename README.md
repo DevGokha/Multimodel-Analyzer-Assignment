@@ -28,7 +28,7 @@ A full-stack project for analyzing text and images using state-of-the-art ML mod
 
 ## 🏗️ Architecture
 
-```mermaid
+```
 graph TD
   FE[Frontend (React/Vite)] -- REST API --> BE[Backend (FastAPI)]
   BE -- ML Inference --> Models[Transformers, EasyOCR, etc.]
