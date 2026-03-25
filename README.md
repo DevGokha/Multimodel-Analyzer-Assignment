@@ -30,23 +30,6 @@ A modern full-stack project for analyzing text and images using state-of-the-art
 - **Dark mode, responsive UI**
 - **Local history, drag-and-drop**
 
----
-
-## 🖼️ Live Demo & Screenshots
-
-<!-- If deployed, add your live link here -->
-<!-- [Live Demo](https://your-demo-link.com) -->
-
-<p align="center">
-  <img src="./Frontend/public/demo.png" alt="Demo Screenshot" width="800" />
-</p>
-
-<p align="center">
-  <img src="./Frontend/public/demo-ui.png" alt="UI Screenshot" width="800" />
-</p>
-
----
-
 ## 🏗️ Architecture
 
 ```
@@ -154,20 +137,58 @@ For questions or feedback, open an issue or contact [@DevGokha](https://github.c
 
 ```
 Multimodel-Analyzer-Assignment/
-  backend/
-    analyzer.py
-    main.py
-    pdf_generator.py
-    requirements.txt
-    tests/
-  Frontend/
-    src/
-      components/
-      App.jsx
-      ...
-    public/
-    package.json
+│
+├── backend/                        # Backend (FastAPI, ML, PDF, etc.)
+│   ├── analyzer.py                 # Core analysis logic (ML, OCR, etc.)
+│   ├── main.py                     # FastAPI app entry point
+│   ├── pdf_generator.py            # PDF report generation logic
+│   ├── requirements.txt            # Python dependencies
+│   ├── __pycache__/                # Python bytecode cache (auto-generated)
+│   └── tests/                      # Backend tests (pytest, httpx)
+│       ├── test_analyzer.py
+│       └── test_main.py
+│
+├── Frontend/                       # Frontend (React, Vite)
+│   ├── public/                     # Static assets (favicon, etc.)
+│   ├── src/                        # Source code
+│   │   ├── App.jsx                 # Main React component
+│   │   ├── App.css                 # App-level styles
+│   │   ├── index.css               # Global styles
+│   │   ├── main.jsx                # React entry point
+│   │   └── components/             # Modular UI components
+│   │       ├── Header.jsx
+│   │       ├── AnalysisForm.jsx
+│   │       ├── ImageDropZone.jsx
+│   │       ├── LoadingProgress.jsx
+│   │       ├── ResultsPanel.jsx
+│   │       ├── SentimentBar.jsx
+│   │       └── HistoryList.jsx
+│   ├── assets/                     # Images, icons, etc.
+│   ├── package.json                # Frontend dependencies & scripts
+│   ├── vite.config.js              # Vite configuration
+│   ├── eslint.config.js            # Linting configuration
+│   ├── README.md                   # Frontend-specific docs (optional)
+│   └── tests/                      # Frontend tests (Vitest, React Testing Library)
+│       ├── App.test.jsx
+│       └── components/
+│           └── AnalysisForm.test.jsx
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml                  # GitHub Actions CI/CD workflow
+│
+├── scripts/
+│   └── setup.sh                    # One-command setup script
+│
+├── Dockerfile                      # Docker build for backend
+├── docker-compose.yml              # Multi-service orchestration
+├── .env                            # Environment variables (never commit secrets)
+├── .gitignore                      # Files/folders to ignore in git
+├── README.md                       # Main project documentation
+└── LICENSE                         # Project license (MIT, Apache, etc.)
 ```
+
+Each file and folder is described in comments above for clarity.
 
 ---
 
