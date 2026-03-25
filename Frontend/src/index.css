@@ -1,22 +1,69 @@
-
-
-body {
-  margin: 0; 
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f4f7f9;
-  color: #333;
+/* Step 1: CSS custom properties (variables) for light theme — the default */
+:root {
+  --bg-primary: #f4f7f9;
+  --bg-card: #ffffff;
+  --bg-input: #ffffff;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --text-heading: #2c3e50;
+  --text-muted: #888;
+  --border-color: #ccc;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --drop-zone-bg: #fafafa;
+  --drop-zone-hover: #f0f7ff;
+  --drop-zone-active: #e6f0ff;
+  --accent: #007bff;
+  --accent-hover: #0056b3;
+  --error-color: #c0392b;
+  --toxicity-bg: #fff3cd;
+  --toxicity-border: #f1c40f;
+  --response-bg: #d1ecf1;
+  --response-border: #3498db;
 }
 
+/* Step 2: Dark theme overrides — applied when data-theme="dark" is on the HTML element */
+[data-theme="dark"] {
+  --bg-primary: #0f0f1a;
+  --bg-card: #1a1a2e;
+  --bg-input: #16213e;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-heading: #e8e8e8;
+  --text-muted: #777;
+  --border-color: #333355;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --drop-zone-bg: #16213e;
+  --drop-zone-hover: #1a2744;
+  --drop-zone-active: #1e2d52;
+  --accent: #4dabf7;
+  --accent-hover: #339af0;
+  --error-color: #ff6b6b;
+  --toxicity-bg: #3d3200;
+  --toxicity-border: #f1c40f;
+  --response-bg: #0a2a33;
+  --response-border: #3498db;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  /* Step 3: Smooth transition when switching between light and dark themes */
+  transition:
+    background-color 0.3s,
+    color 0.3s;
+}
 
 #root {
   display: flex;
   justify-content: center;
-  align-items: center;    
-  min-height: 100vh;      
-  padding: 2rem;          
-  box-sizing: border-box; 
+  align-items: center;
+  min-height: 100vh;
+  padding: 2rem;
+  box-sizing: border-box;
 }

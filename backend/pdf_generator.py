@@ -1,70 +1,101 @@
 from fpdf import FPDF
 from datetime import datetime
+import os
 
-def sanitize_text(text: str) -> str:
-    """
-    Removes characters that are not supported by the built-in PDF fonts (latin-1).
-    """
-    return str(text).encode('latin-1', 'replace').decode('latin-1')
-
-def add_section_entry(pdf, label, value):
-    """
-    A helper function to add a labeled entry to the PDF with a robust layout.
-    """
-    pdf.set_font('Arial', 'B', 12)
-    # The 'ln=1' moves the cursor to the next line after printing the label
-    pdf.cell(0, 8, label, ln=1)
-    
-    pdf.set_font('Arial', '', 12)
-    # The value is now on its own line and can use the full page width
-    pdf.multi_cell(0, 6, value)
-    pdf.ln(4) # Add a little space before the next entry
 
 def create_report(analysis_data: dict) -> bytes:
-    """Generates a PDF report from the analysis data and returns it as bytes."""
+    """
+    Step 1: Generates a branded PDF report with full Unicode support.
+    Uses DejaVu fonts so any character (emoji, accented, CJK, etc.) renders correctly.
+    Returns the PDF as raw bytes ready for download.
+    """
 
     pdf = FPDF()
+
+    # Step 2: Register Unicode-capable DejaVu fonts from the fonts/ directory
+    font_dir = os.path.join(os.path.dirname(__file__), 'fonts')
+    pdf.add_font('DejaVu', '', os.path.join(font_dir, 'DejaVuSans.ttf'), uni=True)
+    pdf.add_font('DejaVu', 'B', os.path.join(font_dir, 'DejaVuSans-Bold.ttf'), uni=True)
+
     pdf.add_page()
-    
-    # --- Header ---
-    pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, 'Multimodal Analysis Report', 0, 1, 'C')
-    
-    # --- Generation Timestamp ---
+
+    # Step 3: Draw a branded header bar (full-width blue banner across the top)
+    pdf.set_fill_color(0, 123, 255)
+    pdf.rect(0, 0, 210, 35, 'F')
+    pdf.set_font('DejaVu', 'B', 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_y(8)
+    pdf.cell(0, 12, 'Multimodal Analysis Report', 0, 1, 'C')
+
+    # Step 4: Add the generation timestamp below the header
+    pdf.set_y(40)
     timestamp = datetime.now().strftime("%d %B %Y, %I:%M %p")
-    pdf.set_font('Arial', 'I', 10)
-    pdf.cell(0, 10, f'Report generated on: {timestamp}', 0, 1, 'R')
-    pdf.ln(10)
+    pdf.set_font('DejaVu', '', 9)
+    pdf.set_text_color(128, 128, 128)
+    pdf.cell(0, 8, f'Report generated on: {timestamp}', 0, 1, 'R')
+    pdf.ln(5)
 
-    # --- Text Analysis Section ---
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, 'Text Analysis', ln=1)
-    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y()) # Underline
-    pdf.ln(4)
-    
-    add_section_entry(pdf, "Sentiment:", sanitize_text(analysis_data.get('text_sentiment', 'N/A')))
-    add_section_entry(pdf, "Topic:", sanitize_text(analysis_data.get('topic_classification', 'N/A')))
-    add_section_entry(pdf, "Summary:", sanitize_text(analysis_data.get('text_summary', 'N/A')))
-    
-    # --- Image Analysis Section ---
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, 'Image Analysis', ln=1)
-    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y()) # Underline
-    pdf.ln(4)
-    
-    add_section_entry(pdf, "Classification:", sanitize_text(analysis_data.get('image_classification', 'N/A')))
-    ocr_text = analysis_data.get('ocr_text') or "No text found."
-    add_section_entry(pdf, "Extracted Text (OCR):", sanitize_text(ocr_text))
+    # Step 5: Text Analysis section — blue accent bar
+    _draw_section_header(pdf, 'Text Analysis', (41, 128, 185))
+    _add_entry(pdf, "Sentiment:", analysis_data.get('text_sentiment', 'N/A'))
+    _add_entry(pdf, "Topic:", analysis_data.get('topic_classification', 'N/A'))
+    _add_entry(pdf, "Summary:", analysis_data.get('text_summary', 'N/A'))
 
-    # --- Final Assessment Section ---
-    pdf.set_font('Arial', 'B', 14)
-    pdf.cell(0, 10, 'Final Assessment', ln=1)
-    pdf.line(pdf.get_x(), pdf.get_y(), pdf.get_x() + 190, pdf.get_y()) # Underline
-    pdf.ln(4)
-    
-    add_section_entry(pdf, "Toxicity Warning:", sanitize_text(analysis_data.get('toxicity_warning', 'N/A')))
-    add_section_entry(pdf, "System Response:", sanitize_text(analysis_data.get('automated_response', 'N/A')))
+    # Step 6: Image Analysis section — green accent bar
+    _draw_section_header(pdf, 'Image Analysis', (39, 174, 96))
+    # Step 6a: If multiple images were analyzed, render each one separately
+    image_results = analysis_data.get('image_results', [])
+    if image_results:
+        for i, img_result in enumerate(image_results, 1):
+            _add_entry(pdf, f"Image {i} ({img_result.get('filename', 'unknown')}):", "")
+            _add_entry(pdf, "  Classification:", img_result.get('image_classification', 'N/A'))
+            ocr = img_result.get('ocr_text') or "No text found."
+            _add_entry(pdf, "  Extracted Text (OCR):", ocr)
+    else:
+        # Step 6b: Fallback for single-image backward compatibility
+        _add_entry(pdf, "Classification:", analysis_data.get('image_classification', 'N/A'))
+        ocr_text = analysis_data.get('ocr_text') or "No text found."
+        _add_entry(pdf, "Extracted Text (OCR):", ocr_text)
 
-    # Generate the raw PDF bytes
-    pdf_bytes = bytes(pdf.output())
-    return pdf_bytes
+    # Step 7: Final Assessment section — red accent bar
+    _draw_section_header(pdf, 'Final Assessment', (231, 76, 60))
+    _add_entry(pdf, "Toxicity Warning:", analysis_data.get('toxicity_warning', 'N/A'))
+    _add_entry(pdf, "System Response:", analysis_data.get('automated_response', 'N/A'))
+
+    # Step 8: Footer at the bottom of the page
+    pdf.set_y(-20)
+    pdf.set_font('DejaVu', '', 8)
+    pdf.set_text_color(160, 160, 160)
+    pdf.cell(0, 10, 'Generated by Multimodal Analyzer', 0, 0, 'C')
+
+    return bytes(pdf.output())
+
+
+def _draw_section_header(pdf, title, color):
+    """
+    Step helper: Draw a small colored accent bar on the left and the section title.
+    Each section gets its own color for visual distinction in the report.
+    """
+    r, g, b = color
+    pdf.set_fill_color(r, g, b)
+    pdf.rect(10, pdf.get_y(), 4, 10, 'F')
+    pdf.set_x(18)
+    pdf.set_font('DejaVu', 'B', 13)
+    pdf.set_text_color(r, g, b)
+    pdf.cell(0, 10, title, 0, 1)
+    pdf.ln(2)
+
+
+def _add_entry(pdf, label, value):
+    """
+    Step helper: Add a labeled entry (bold label on one line, value below it).
+    Uses DejaVu font for full Unicode character support.
+    """
+    pdf.set_font('DejaVu', 'B', 10)
+    pdf.set_text_color(60, 60, 60)
+    pdf.cell(0, 7, label, 0, 1)
+
+    pdf.set_font('DejaVu', '', 10)
+    pdf.set_text_color(80, 80, 80)
+    pdf.multi_cell(0, 6, str(value))
+    pdf.ln(4)

@@ -1,5 +1,3 @@
-
-
 .App {
   width: 100%;
   max-width: 900px;
@@ -10,32 +8,83 @@
   margin-bottom: 40px;
 }
 
-.App-header h1 {
-  font-size: 2.5rem;
-  color: #2c3e50;
+/* Step 1: Header row — centers the title and dark mode toggle side by side */
+.header-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
 }
 
+.App-header h1 {
+  font-size: 2.5rem;
+  color: var(--text-heading);
+}
 
+.App-header p {
+  color: var(--text-secondary);
+}
+
+/* ===== Theme Toggle Button ===== */
+/* Step 2: A circular button that switches between sun/moon emoji for dark mode */
+.theme-toggle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  background: var(--bg-card);
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  background: var(--bg-card);
+}
+
+/* ===== Form ===== */
 .form-container form {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   padding: 25px;
   border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 6px var(--shadow-color);
 }
 
-textarea, input[type="file"] {
+/* Step 3: Form inputs use CSS variables so they adapt to light/dark theme */
+textarea,
+input[type="file"],
+.topics-input {
   padding: 12px;
   border-radius: 5px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-color);
   font-size: 1rem;
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  transition:
+    background-color 0.3s,
+    color 0.3s,
+    border-color 0.3s;
+}
+
+textarea:focus,
+.topics-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 button {
   padding: 12px;
-  background-color: #007bff;
+  background-color: var(--accent);
   color: white;
   border: none;
   border-radius: 5px;
@@ -46,7 +95,7 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background-color: #0056b3;
+  background-color: var(--accent-hover);
 }
 
 button:disabled {
@@ -55,13 +104,167 @@ button:disabled {
 }
 
 .error {
-  color: #c0392b;
+  color: var(--error-color);
   text-align: center;
   font-weight: bold;
   margin-top: 15px;
 }
 
+/* ===== Drag-and-Drop Zone ===== */
+/* Step 4: Drop zone uses theme variables for background and border colors */
+.drop-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 30px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+  background-color: var(--drop-zone-bg);
+}
 
+.drop-zone:hover {
+  border-color: var(--accent);
+  background-color: var(--drop-zone-hover);
+}
+
+.drop-zone-active {
+  border-color: var(--accent);
+  background-color: var(--drop-zone-active);
+}
+
+.drop-zone-has-image {
+  padding: 15px;
+}
+
+.drop-zone-placeholder {
+  color: var(--text-muted);
+}
+
+.drop-zone-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.drop-zone-placeholder p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* ===== Multiple Image Preview Grid ===== */
+/* Step 5: A flex grid that shows all selected image thumbnails side by side */
+.image-previews-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.image-preview {
+  position: relative;
+  display: inline-block;
+}
+
+.image-preview img {
+  width: 120px;
+  height: 120px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: #e74c3c;
+  color: white;
+  border: 2px solid white;
+  font-size: 0.8rem;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.remove-image-btn:hover {
+  background-color: #c0392b;
+}
+
+.preview-filename {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  word-break: break-all;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Step 6: "Add more" button shown at the end of the image preview grid */
+.add-more-placeholder {
+  width: 120px;
+  height: 120px;
+  border: 2px dashed var(--border-color);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.add-more-placeholder:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ===== Loading Progress ===== */
+.loading-indicator {
+  margin-top: 20px;
+  text-align: center;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #00b4d8);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.loading-step-text {
+  margin: 10px 0 2px;
+  font-weight: bold;
+  color: var(--text-heading);
+  font-size: 0.95rem;
+}
+
+.loading-step-count {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ===== Results ===== */
 .results-container {
   margin-top: 40px;
   text-align: center;
@@ -69,22 +272,27 @@ button:disabled {
 
 .results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 20px;
   text-align: left;
 }
 
+/* Step 7: Result cards use theme variables for background and text colors */
 .result-card {
-  background-color: white;
+  background-color: var(--bg-card);
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  border-left: 5px solid #007bff;
+  box-shadow: 0 2px 4px var(--shadow-color);
+  border-left: 5px solid var(--accent);
 }
 
 .result-card h3 {
   margin-top: 0;
-  color: #34495e;
+  color: var(--text-heading);
+}
+
+.result-card p {
+  color: var(--text-primary);
 }
 
 .full-width {
@@ -92,15 +300,55 @@ button:disabled {
 }
 
 .toxicity-warning {
-  background-color: #fff3cd;
-  border-left-color: #f1c40f;
+  background-color: var(--toxicity-bg);
+  border-left-color: var(--toxicity-border);
 }
 
 .automated-response {
-  background-color: #d1ecf1;
-  border-left-color: #3498db;
+  background-color: var(--response-bg);
+  border-left-color: var(--response-border);
 }
 
+/* ===== Confidence Score Bar ===== */
+/* Step 8: A horizontal bar that visually shows the sentiment confidence percentage */
+.confidence-bar-container {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  background-color: #e0e0e0;
+  border-radius: 11px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.confidence-bar-fill {
+  height: 100%;
+  border-radius: 11px;
+  transition: width 0.6s ease;
+}
+
+/* Step 8a: Green gradient for positive sentiment */
+.confidence-positive {
+  background: linear-gradient(90deg, #27ae60, #2ecc71);
+}
+
+/* Step 8b: Red gradient for negative sentiment */
+.confidence-negative {
+  background: linear-gradient(90deg, #c0392b, #e74c3c);
+}
+
+/* Step 8c: Centered label showing the percentage inside the bar */
+.confidence-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #333;
+}
+
+/* ===== Export ===== */
 .export-section {
   display: flex;
   justify-content: space-between;
@@ -110,4 +358,129 @@ button:disabled {
 
 .export-section h2 {
   margin: 0;
+  color: var(--text-heading);
+}
+
+/* ===== Analysis History ===== */
+.history-container {
+  margin-top: 40px;
+}
+
+/* Step 9: History header with title and clear button side by side */
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.history-header h2 {
+  margin: 0;
+  color: var(--text-heading);
+}
+
+/* Step 10: Red "Clear All" button to wipe history */
+.clear-history-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.clear-history-btn:hover {
+  background-color: #c0392b;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--bg-card);
+  padding: 12px 18px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px var(--shadow-color);
+  border-left: 4px solid var(--accent);
+}
+
+.history-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-time {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.history-sentiment {
+  font-weight: bold;
+  color: var(--text-heading);
+  font-size: 0.95rem;
+}
+
+.history-load-btn {
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.history-load-btn:hover {
+  background-color: var(--accent-hover);
+}
+
+/* ===== Mobile Responsiveness ===== */
+@media (max-width: 600px) {
+  .App-header h1 {
+    font-size: 1.8rem;
+  }
+
+  .form-container form {
+    padding: 15px;
+  }
+
+  /* Step 11: Single column layout on small screens */
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .export-section {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .history-item {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+
+  /* Step 12: Smaller image thumbnails on mobile */
+  .image-preview img {
+    width: 80px;
+    height: 80px;
+  }
+
+  .add-more-placeholder {
+    width: 80px;
+    height: 80px;
+  }
+
+  .preview-filename {
+    max-width: 80px;
+  }
 }
