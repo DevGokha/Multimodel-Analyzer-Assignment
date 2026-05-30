@@ -45,3 +45,22 @@ def test_generate_report(client):
     resp = client.post("/generate-report", json=payload)
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"
+
+@patch("analyzer.analyze_sentiment", return_value={"label": "POSITIVE", "score": 0.99})
+@patch("analyzer.summarize_text", return_value="Summary text.")
+@patch("analyzer.classify_topic", return_value="news")
+@patch("analyzer.check_toxicity", return_value={"is_toxic": False, "score": 0.1})
+@patch("analyzer.classify_image", return_value="cat")
+@patch("analyzer.extract_text_from_image", return_value="hello world")
+def test_analyze_stream(mock_ocr, mock_img, mock_tox, mock_topic, mock_sum, mock_sent, client):
+    data = {
+        "text": "I love this!",
+        "topics": "news,review"
+    }
+    files = {"images": ("test.png", io.BytesIO(b"fakeimg"), "image/png")}
+    with client.stream("POST", "/analyze-stream", data=data, files=files) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers["content-type"]
+        lines = [line for line in response.iter_lines() if line.strip()]
+        assert any("processing" in line for line in lines)
+        assert any("completed" in line for line in lines)

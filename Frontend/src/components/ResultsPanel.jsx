@@ -18,7 +18,27 @@ export default function ResultsPanel({ results, handleExport, isExporting }) {
           <p>{results.text_sentiment}</p>
           <SentimentBar sentimentStr={sentimentScore} />
         </div>
-        <div className="result-card"><h3>Topic</h3><p>{results.topic_classification}</p></div>
+        <div className="result-card">
+          <h3>Topic Classification</h3>
+          <p style={{ fontWeight: 'bold', fontSize: '18px', color: '#3b82f6', marginBottom: '10px' }}>
+            {results.topic_classification}
+          </p>
+          {results.topic_scores && results.topic_scores.length > 0 && (
+            <div className="topic-distribution" style={{ marginTop: '10px' }}>
+              {results.topic_scores.map((t, idx) => (
+                <div key={idx} style={{ marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: '500', color: 'var(--text-secondary, #4b5563)' }}>
+                    <span>{t.label}</span>
+                    <span>{(t.score * 100).toFixed(0)}%</span>
+                  </div>
+                  <div style={{ height: '6px', backgroundColor: 'var(--bg-card-border, #e5e7eb)', borderRadius: '3px', overflow: 'hidden', marginTop: '3px' }}>
+                    <div style={{ height: '100%', width: `${t.score * 100}%`, backgroundColor: '#3b82f6', borderRadius: '3px', transition: 'width 0.6s ease-in-out' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {results.image_results && results.image_results.length > 1 ? (
           results.image_results.map((imgRes, idx) => (
             <div className="result-card" key={idx}>

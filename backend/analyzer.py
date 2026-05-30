@@ -6,137 +6,157 @@ import gc
 import threading
 
 
-# Step 1: Use load-use-unload pattern to keep only one model in memory at a time.
-# This prevents out-of-memory crashes on systems with limited RAM/page file.
+# Step 1: Use warm-caching with automatic idle-unload (TTL) to keep only one model in memory.
+# This prevents out-of-memory crashes on systems with limited RAM, while optimizing latency for subsequent requests.
 
-# Step 1a: Store each model reference (None when not loaded)
-sentiment_analyzer = None
-summarizer = None
-topic_classifier = None
-image_classifier = None
-ocr_reader = None
+class WarmModel:
+    def __init__(self, name, loader_fn, ttl_seconds=300):
+        self.name = name
+        self.loader_fn = loader_fn
+        self.ttl_seconds = ttl_seconds
+        self.model = None
+        self.timer = None
+        self.lock = threading.Lock()
 
-# Step 1b: Lock to prevent race conditions when loading/unloading models
+    def load_and_get(self):
+        with self.lock:
+            # Cancel any scheduled idle unload timer
+            if self.timer is not None:
+                self.timer.cancel()
+                self.timer = None
+            
+            # If the model is not currently in memory, unload others first and then load it
+            if self.model is None:
+                _unload_all_except(self.name)
+                print(f"Loading {self.name} model...")
+                self.model = self.loader_fn()
+            
+            return self.model
+
+    def release_after_use(self):
+        with self.lock:
+            # Cancel existing timer to avoid duplicate schedules
+            if self.timer is not None:
+                self.timer.cancel()
+            
+            # Start timer to unload after self.ttl_seconds of inactivity
+            self.timer = threading.Timer(self.ttl_seconds, self._unload)
+            self.timer.daemon = True  # Ensure timer thread does not block server shutdown
+            self.timer.start()
+            print(f"Scheduled idle-unload for {self.name} model in {self.ttl_seconds} seconds...")
+
+    def _unload(self):
+        with self.lock:
+            if self.model is not None:
+                print(f"Idle timeout reached. Unloading {self.name} model to free memory...")
+                self.model = None
+                self.timer = None
+                gc.collect()
+
+# Define model loader helper functions
+def _load_sentiment():
+    return pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
+
+def _load_summarizer():
+    return pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")
+
+def _load_topic():
+    return pipeline("zero-shot-classification", model="valhalla/distilbart-mnli-12-3")
+
+def _load_image():
+    return pipeline("image-classification", model="google/vit-base-patch16-224")
+
+def _load_ocr():
+    return easyocr.Reader(['en'], gpu=False)
+
+# Registry of warm model instances (5-minute TTL by default)
+models_registry = {
+    "sentiment": WarmModel("sentiment", _load_sentiment, ttl_seconds=300),
+    "summarizer": WarmModel("summarizer", _load_summarizer, ttl_seconds=300),
+    "topic": WarmModel("topic", _load_topic, ttl_seconds=300),
+    "image": WarmModel("image", _load_image, ttl_seconds=300),
+    "ocr": WarmModel("ocr", _load_ocr, ttl_seconds=300),
+}
+
 _model_lock = threading.Lock()
 
-
 def _unload_all_except(keep=None):
-    """Step 1c: Unload all models except the one we're about to use.
-    This ensures only one large model is in memory at any time, preventing OOM crashes."""
-    global sentiment_analyzer, summarizer, topic_classifier, image_classifier, ocr_reader
-    if keep != "sentiment" and sentiment_analyzer is not None:
-        sentiment_analyzer = None
-    if keep != "summarizer" and summarizer is not None:
-        summarizer = None
-    if keep != "topic" and topic_classifier is not None:
-        topic_classifier = None
-    if keep != "image" and image_classifier is not None:
-        image_classifier = None
-    if keep != "ocr" and ocr_reader is not None:
-        ocr_reader = None
+    """Unload all active models in the registry except the specified one to enforce the single-model RAM constraint."""
+    for name, warm_model in models_registry.items():
+        if name != keep:
+            with warm_model.lock:
+                if warm_model.timer is not None:
+                    warm_model.timer.cancel()
+                    warm_model.timer = None
+                if warm_model.model is not None:
+                    print(f"Force unloading {name} model to load {keep}...")
+                    warm_model.model = None
     gc.collect()
 
 
+
 def analyze_sentiment(text: str):
-    """Step 2: Load sentiment model, run inference, then unload it to free memory.
-    Only POSITIVE or NEGATIVE labels are returned by this distilbert model."""
-    global sentiment_analyzer
-    with _model_lock:
-        # Step 2a: Unload all other models before loading this one
-        _unload_all_except("sentiment")
-        # Step 2b: Load model if not already loaded
-        if sentiment_analyzer is None:
-            print("Loading sentiment model...")
-            sentiment_analyzer = pipeline("sentiment-analysis", model="distilbert-base-uncased-finetuned-sst-2-english")
-        # Step 2c: Run inference
-        result = sentiment_analyzer(text)[0]
-        # Step 2d: Unload model immediately after use to free memory
-        print("Unloading sentiment model...")
-        sentiment_analyzer = None
-        gc.collect()
+    """Step 2: Load sentiment model, run inference, then release/cache it."""
+    warm_model = models_registry["sentiment"]
+    model = warm_model.load_and_get()
+    
+    result = model(text)[0]
+    
+    warm_model.release_after_use()
     return {"label": result['label'], "score": result['score']}
 
 
 def summarize_text(text: str):
-    """Step 3: Load summarization model, run inference, then unload it."""
-    global summarizer
+    """Step 3: Load summarization model, run inference, then release/cache it."""
     if len(text.split()) <= 40:
         return "Text is too short to summarize."
-    with _model_lock:
-        # Step 3a: Unload all other models before loading this one
-        _unload_all_except("summarizer")
-        # Step 3b: Load model if not already loaded
-        if summarizer is None:
-            print("Loading summarization model...")
-            summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-6-6")
-        # Step 3c: Run inference
-        result = summarizer(text, max_length=50, min_length=20, do_sample=False)
-        # Step 3d: Unload model immediately after use to free memory
-        print("Unloading summarization model...")
-        summarizer = None
-        gc.collect()
+    
+    warm_model = models_registry["summarizer"]
+    model = warm_model.load_and_get()
+    
+    result = model(text, max_length=50, min_length=20, do_sample=False)
+    
+    warm_model.release_after_use()
     return result[0]['summary_text']
 
 
 def classify_topic(text: str, topics=None):
-    """Step 4: Load zero-shot topic classifier, run inference, then unload it.
+    """Step 4: Load zero-shot topic classifier, run inference, then release/cache it.
     Uses distilled BART-MNLI (~300MB) instead of the full model (~1.6GB)."""
     if topics is None:
         topics = ["news", "review", "comment", "complaint"]
-    global topic_classifier
-    with _model_lock:
-        # Step 4a: Unload all other models before loading this one
-        _unload_all_except("topic")
-        # Step 4b: Load model if not already loaded
-        if topic_classifier is None:
-            print("Loading topic classification model...")
-            topic_classifier = pipeline("zero-shot-classification", model="valhalla/distilbart-mnli-12-3")
-        # Step 4c: Run inference
-        result = topic_classifier(text, candidate_labels=topics)
-        # Step 4d: Unload model immediately after use to free memory
-        print("Unloading topic classification model...")
-        topic_classifier = None
-        gc.collect()
-    return result['labels'][0]
+    
+    warm_model = models_registry["topic"]
+    model = warm_model.load_and_get()
+    
+    result = model(text, candidate_labels=topics)
+    
+    warm_model.release_after_use()
+    return {"labels": result['labels'], "scores": result['scores']}
 
 
 def classify_image(image_bytes: bytes):
-    """Step 5: Load image classifier, run inference, then unload it."""
-    global image_classifier
+    """Step 5: Load image classifier, run inference, then release/cache it."""
     from io import BytesIO
     image = Image.open(BytesIO(image_bytes))
-    with _model_lock:
-        # Step 5a: Unload all other models before loading this one
-        _unload_all_except("image")
-        # Step 5b: Load model if not already loaded
-        if image_classifier is None:
-            print("Loading image classification model...")
-            image_classifier = pipeline("image-classification", model="google/vit-base-patch16-224")
-        # Step 5c: Run inference
-        result = image_classifier(image)
-        # Step 5d: Unload model immediately after use to free memory
-        print("Unloading image classification model...")
-        image_classifier = None
-        gc.collect()
+    
+    warm_model = models_registry["image"]
+    model = warm_model.load_and_get()
+    
+    result = model(image)
+    
+    warm_model.release_after_use()
     return result[0]['label']
 
 
 def extract_text_from_image(image_bytes: bytes):
-    """Step 6: Load OCR reader, extract text, then unload it."""
-    global ocr_reader
-    with _model_lock:
-        # Step 6a: Unload all other models before loading this one
-        _unload_all_except("ocr")
-        # Step 6b: Load OCR reader if not already loaded
-        if ocr_reader is None:
-            print("Loading OCR reader...")
-            ocr_reader = easyocr.Reader(['en'], gpu=False)
-        # Step 6c: Run OCR text extraction
-        result = ocr_reader.readtext(image_bytes)
-        # Step 6d: Unload OCR reader immediately after use to free memory
-        print("Unloading OCR reader...")
-        ocr_reader = None
-        gc.collect()
+    """Step 6: Load OCR reader, extract text, then release/cache it."""
+    warm_model = models_registry["ocr"]
+    model = warm_model.load_and_get()
+    
+    result = model.readtext(image_bytes)
+    
+    warm_model.release_after_use()
     extracted_text = " ".join([item[1] for item in result])
     return extracted_text
 

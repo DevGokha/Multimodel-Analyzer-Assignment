@@ -21,17 +21,7 @@ const LOADING_STEPS = [
   'Generating response...',
 ];
 
-// Step 2: Helper to extract the confidence score from "POSITIVE (0.95)" format
-function parseSentimentScore(sentimentStr) {
-  const match = sentimentStr?.match(/\(([0-9.]+)\)/);
-  return match ? parseFloat(match[1]) : null;
-}
 
-// Step 3: Helper to extract the label from "POSITIVE (0.95)" format
-function parseSentimentLabel(sentimentStr) {
-  const match = sentimentStr?.match(/^(\w+)/);
-  return match ? match[1] : sentimentStr;
-}
 
 // Step 4: Load analysis history from localStorage (returns empty array on failure)
 function loadHistory() {
@@ -126,21 +116,9 @@ function App() {
     }
   };
 
-  // Step 20: Simulate progress through loading steps while waiting for the API
-  const simulateProgress = () => {
-    setLoadingStep(0);
-    const totalSteps = LOADING_STEPS.length;
-    // Move to the next step every 1.5 seconds
-    const interval = setInterval(() => {
-      setLoadingStep(prev => {
-        if (prev >= totalSteps - 1) { clearInterval(interval); return prev; }
-        return prev + 1;
-      });
-    }, 1500);
-    return interval;
-  };
 
   // Step 21: Submit the form — sends text + all images + optional custom topics
+  // Step 21: Submit the form — sends text + all images + optional custom topics with real-time SSE updates
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!text || images.length === 0) {
@@ -151,35 +129,65 @@ function App() {
     setError('');
     setIsLoading(true);
     setResults(null);
-
-    // Step 21a: Start the progress indicator
-    const progressInterval = simulateProgress();
+    setLoadingStep(0);
 
     const formData = new FormData();
     formData.append('text', text);
-    // Step 21b: Append every selected image under the 'images' field name
+    // Step 21a: Append every selected image under the 'images' field name
     images.forEach(img => formData.append('images', img));
-    // Step 21c: Append custom topic labels if the user entered any
+    // Step 21b: Append custom topic labels if the user entered any
     if (customTopics.trim()) {
       formData.append('topics', customTopics.trim());
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/analyze`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await fetch(`${API_BASE_URL}/analyze-stream`, {
+        method: 'POST',
+        body: formData,
       });
-      setResults(response.data);
-      // Step 21d: Save this analysis to history with a timestamp
-      setHistory(prev => [
-        { id: Date.now(), timestamp: new Date().toLocaleString(), data: response.data },
-        ...prev,
-      ]);
+
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        throw new Error(errorJson.detail || 'An error occurred during analysis. Please try again.');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Store partial line back in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim();
+            const event = JSON.parse(dataStr);
+
+            if (event.status === 'processing') {
+              setLoadingStep(event.step);
+            } else if (event.status === 'completed') {
+              setResults(event.results);
+              // Step 21c: Save this analysis to history with a timestamp
+              setHistory(prev => [
+                { id: Date.now(), timestamp: new Date().toLocaleString(), data: event.results },
+                ...prev,
+              ]);
+            } else if (event.status === 'error') {
+              throw new Error(event.detail || 'Analysis task failed on the server.');
+            }
+          }
+        }
+      }
     } catch (err) {
-      const serverMessage = err.response?.data?.detail;
-      setError(serverMessage || 'An error occurred during analysis. Please try again.');
+      setError(err.message || 'An error occurred during analysis. Please try again.');
       console.error(err);
     } finally {
-      clearInterval(progressInterval);
       setIsLoading(false);
       setLoadingStep(0);
     }
@@ -222,9 +230,6 @@ function App() {
     localStorage.removeItem('analysisHistory');
   };
 
-  // Step 25: Parse the confidence score and label for the visual bar
-  const sentimentScore = results ? parseSentimentScore(results.text_sentiment) : null;
-  const sentimentLabel = results ? parseSentimentLabel(results.text_sentiment) : null;
 
   return (
     <div className="App">

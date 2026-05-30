@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form, Response, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, Response, HTTPException, Request
 from fastapi.responses import StreamingResponse 
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -24,11 +24,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Constants and Executor
+MAX_TEXT_LENGTH = 10000
+MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"}
+executor = ThreadPoolExecutor(max_workers=1)
+
+app = FastAPI()
+
 # Add rate limiting
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
-app = FastAPI()
 
 
 origins = [
@@ -51,6 +59,11 @@ class ImageResult(BaseModel):
     ocr_text: str = "Text extracted from image (OCR)."
 
 
+class TopicScore(BaseModel):
+    label: str = "Topic label"
+    score: float = "Classification confidence score"
+
+
 class AnalysisResponse(BaseModel):
     text_sentiment: str = "Sentiment label and confidence (e.g. 'POSITIVE (0.95)')."
     text_summary: str = "Summary of the input text."
@@ -60,6 +73,7 @@ class AnalysisResponse(BaseModel):
     toxicity_warning: str = "Toxicity warning message."
     automated_response: str = "Automated system response."
     image_results: List[ImageResult] = []
+    topic_scores: List[TopicScore] = []
 
 
 @app.get("/", summary="Health check", description="Returns a status message.", response_description="API status message.")
@@ -70,6 +84,7 @@ def read_root():
 @app.post("/analyze", response_model=AnalysisResponse, summary="Analyze text and images", description="Analyzes text and images for sentiment, summary, topic, image classification, OCR, and toxicity.", response_description="Analysis results.")
 @limiter.limit("5/minute")
 async def analyze_data(
+    request: Request,
     text: str = Form(..., description="Text to analyze (max 10,000 chars)"),
     images: List[UploadFile] = File(..., description="One or more image files (JPEG, PNG, GIF, WebP, BMP, TIFF; max 10MB each)"),
     topics: Optional[str] = Form(None, description="Comma-separated custom topic labels for classification"),
@@ -190,18 +205,191 @@ async def analyze_data(
         toxicity_warning = "Toxicity detected in image text (OCR)."
 
     # Step 7: Build and return the response (primary fields use first image for backward compat)
+    if isinstance(topic_result, dict):
+        top_topic = topic_result["labels"][0]
+        topic_scores = [TopicScore(label=l, score=s) for l, s in zip(topic_result["labels"], topic_result["scores"])]
+    else:
+        top_topic = topic_result
+        topic_scores = [TopicScore(label=topic_result, score=1.0)]
+
     response = AnalysisResponse(
         text_sentiment=f"{sentiment_result['label']} ({sentiment_result['score']:.2f})",
         text_summary=summary_result,
-        topic_classification=topic_result,
+        topic_classification=top_topic,
         image_classification=image_results[0].image_classification if image_results else "N/A",
         ocr_text=image_results[0].ocr_text if image_results else "",
         toxicity_warning=toxicity_warning,
         automated_response=automated_response,
         image_results=image_results,
+        topic_scores=topic_scores,
     )
 
     return response
+
+@app.post("/analyze-stream", summary="Analyze text and images with real-time stream", description="Streams real-time progress updates and returns final analysis results.")
+@limiter.limit("5/minute")
+async def analyze_stream(
+    request: Request,
+    text: str = Form(..., description="Text to analyze (max 10,000 chars)"),
+    images: List[UploadFile] = File(..., description="One or more image files (JPEG, PNG, GIF, WebP, BMP, TIFF; max 10MB each)"),
+    topics: Optional[str] = Form(None, description="Comma-separated custom topic labels for classification"),
+):
+    # Step 1b: Validate text length — reject if too long to prevent memory issues
+    if len(text) > MAX_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Text is too long. Maximum allowed length is {MAX_TEXT_LENGTH} characters (you sent {len(text)})."
+        )
+
+    # Step 2: Read and validate all uploaded images
+    image_data_list = []
+    for img in images:
+        # Step 2a: Validate each image's MIME type
+        if img.content_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type '{img.content_type}' for '{img.filename}'. Allowed: JPEG, PNG, GIF, WebP, BMP, TIFF."
+            )
+        # Step 2b: Read image bytes with error handling
+        try:
+            img_bytes = await img.read()
+        except Exception as e:
+            logger.error(f"Failed to read image '{img.filename}': {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to read image '{img.filename}'.")
+        # Step 2c: Validate file size
+        if len(img_bytes) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Image '{img.filename}' is too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB."
+            )
+        image_data_list.append({"filename": img.filename or "image", "bytes": img_bytes})
+
+    # Step 2d: Parse custom topic labels if the user provided them (comma-separated)
+    topic_labels = None
+    if topics and topics.strip():
+        topic_labels = [t.strip() for t in topics.split(',') if t.strip()]
+
+    async def stream_generator():
+        loop = asyncio.get_event_loop()
+        import json
+
+        # Step 0: Uploading data...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 0, 'message': 'Uploading data...'})}\n\n"
+        await asyncio.sleep(0.1)
+
+        # Step 1: Analyzing sentiment...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 1, 'message': 'Analyzing sentiment...'})}\n\n"
+        try:
+            sentiment_result = await loop.run_in_executor(executor, analyzer.analyze_sentiment, text)
+        except Exception as e:
+            logger.error(f"Sentiment analysis failed: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'detail': 'Sentiment analysis failed.'})}\n\n"
+            return
+
+        # Step 2: Summarizing text...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 2, 'message': 'Summarizing text...'})}\n\n"
+        try:
+            summary_result = await loop.run_in_executor(executor, analyzer.summarize_text, text)
+        except Exception as e:
+            logger.error(f"Text summarization failed: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'detail': 'Text summarization failed.'})}\n\n"
+            return
+
+        # Step 3: Classifying topic...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 3, 'message': 'Classifying topic...'})}\n\n"
+        try:
+            if topic_labels:
+                topic_result = await loop.run_in_executor(executor, analyzer.classify_topic, text, topic_labels)
+            else:
+                topic_result = await loop.run_in_executor(executor, analyzer.classify_topic, text)
+        except Exception as e:
+            logger.error(f"Topic classification failed: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'detail': 'Topic classification failed.'})}\n\n"
+            return
+
+        # Step 4: Checking toxicity...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 4, 'message': 'Checking toxicity...'})}\n\n"
+        try:
+            text_toxicity_result = await loop.run_in_executor(executor, analyzer.check_toxicity, text)
+        except Exception as e:
+            logger.error(f"Text toxicity check failed: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'detail': 'Toxicity check failed on input text.'})}\n\n"
+            return
+
+        # Step 5: Classifying images...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 5, 'message': 'Classifying images...'})}\n\n"
+        image_results = []
+        all_ocr_texts = []
+        for img_data in image_data_list:
+            try:
+                cls_result = await loop.run_in_executor(executor, analyzer.classify_image, img_data["bytes"])
+            except Exception as e:
+                logger.error(f"Image classification failed for {img_data['filename']}: {e}")
+                cls_result = "Classification failed"
+            image_results.append(cls_result)
+
+        # Step 6: Extracting text from images (OCR)...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 6, 'message': 'Extracting text from images (OCR)...'})}\n\n"
+        final_image_results = []
+        for idx, img_data in enumerate(image_data_list):
+            try:
+                ocr_result = await loop.run_in_executor(executor, analyzer.extract_text_from_image, img_data["bytes"])
+            except Exception as e:
+                logger.error(f"OCR failed for {img_data['filename']}: {e}")
+                ocr_result = ""
+            cls_result = image_results[idx]
+            final_image_results.append(ImageResult(
+                filename=img_data["filename"] or "image",
+                image_classification=cls_result.split(',')[0] if isinstance(cls_result, str) else str(cls_result),
+                ocr_text=ocr_result,
+            ))
+            all_ocr_texts.append(ocr_result)
+
+        # Step 7: Generating response...
+        yield f"data: {json.dumps({'status': 'processing', 'step': 7, 'message': 'Generating response...'})}\n\n"
+        try:
+            combined_ocr = " ".join(all_ocr_texts)
+            ocr_toxicity_result = await loop.run_in_executor(executor, analyzer.check_toxicity, combined_ocr)
+        except Exception as e:
+            logger.error(f"OCR toxicity check failed: {e}")
+            yield f"data: {json.dumps({'status': 'error', 'detail': 'Toxicity check failed on extracted image text.'})}\n\n"
+            return
+
+        primary_class = final_image_results[0].image_classification if final_image_results else ""
+        nlp_data = {"sentiment": sentiment_result, "toxicity": text_toxicity_result}
+        cv_data = {"classification": primary_class, "ocr_toxicity": ocr_toxicity_result}
+        automated_response = analyzer.generate_automated_response(nlp_data, cv_data)
+
+        toxicity_warning = "None"
+        if text_toxicity_result['is_toxic'] and ocr_toxicity_result['is_toxic']:
+            toxicity_warning = "Toxicity detected in both text and image."
+        elif text_toxicity_result['is_toxic']:
+            toxicity_warning = "Toxicity detected in input text."
+        elif ocr_toxicity_result['is_toxic']:
+            toxicity_warning = "Toxicity detected in image text (OCR)."
+
+        # Return full response
+        if isinstance(topic_result, dict):
+            top_topic = topic_result["labels"][0]
+            topic_scores = [{"label": l, "score": s} for l, s in zip(topic_result["labels"], topic_result["scores"])]
+        else:
+            top_topic = topic_result
+            topic_scores = [{"label": topic_result, "score": 1.0}]
+
+        response_payload = {
+            "text_sentiment": f"{sentiment_result['label']} ({sentiment_result['score']:.2f})",
+            "text_summary": summary_result,
+            "topic_classification": top_topic,
+            "image_classification": final_image_results[0].image_classification if final_image_results else "N/A",
+            "ocr_text": final_image_results[0].ocr_text if final_image_results else "",
+            "toxicity_warning": toxicity_warning,
+            "automated_response": automated_response,
+            "image_results": [img.dict() for img in final_image_results],
+            "topic_scores": topic_scores,
+        }
+        yield f"data: {json.dumps({'status': 'completed', 'results': response_payload})}\n\n"
+
+    return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
 @app.post("/generate-report", summary="Generate PDF report", description="Generates a branded PDF report from analysis results.", response_description="PDF file.")
 async def generate_report(analysis_data: AnalysisResponse):
