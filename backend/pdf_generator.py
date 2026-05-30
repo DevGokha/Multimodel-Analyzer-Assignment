@@ -1,6 +1,7 @@
 from fpdf import FPDF
 from datetime import datetime
 import os
+import re
 
 
 def create_report(analysis_data: dict) -> bytes:
@@ -37,8 +38,77 @@ def create_report(analysis_data: dict) -> bytes:
 
     # Step 5: Text Analysis section — blue accent bar
     _draw_section_header(pdf, 'Text Analysis', (41, 128, 185))
-    _add_entry(pdf, "Sentiment:", analysis_data.get('text_sentiment', 'N/A'))
-    _add_entry(pdf, "Topic:", analysis_data.get('topic_classification', 'N/A'))
+    # Parse and Draw Sentiment Banner
+    sentiment_str = analysis_data.get('text_sentiment', 'N/A')
+    match = re.search(r'\(([0-9.]+)\)', sentiment_str)
+    score = float(match.group(1)) if match else None
+    label_match = re.match(r'^(\w+)', sentiment_str)
+    label = label_match.group(1) if label_match else sentiment_str
+
+    if label == 'POSITIVE':
+        bg_r, bg_g, bg_b = 209, 250, 229  # Light emerald green
+        fg_r, fg_g, fg_b = 6, 95, 70      # Dark emerald green
+        icon = "[✓]"
+    elif label == 'NEGATIVE':
+        bg_r, bg_g, bg_b = 254, 226, 226  # Light rose red
+        fg_r, fg_g, fg_b = 153, 27, 27    # Dark rose red
+        icon = "[⚠]"
+    else:
+        bg_r, bg_g, bg_b = 239, 246, 255  # Light gray-blue
+        fg_r, fg_g, fg_b = 30, 64, 175    # Dark gray-blue
+        icon = "[i]"
+
+    # Draw Sentiment Banner
+    current_y = pdf.get_y()
+    pdf.set_fill_color(bg_r, bg_g, bg_b)
+    pdf.set_draw_color(fg_r, fg_g, fg_b)
+    pdf.set_line_width(0.5)
+    pdf.rect(10, current_y, 190, 15, 'DF')
+
+    pdf.set_y(current_y + 3)
+    pdf.set_x(15)
+    pdf.set_font('DejaVu', 'B', 11)
+    pdf.set_text_color(fg_r, fg_g, fg_b)
+    confidence_pct = f" ({score * 100:.0f}% confidence)" if score is not None else ""
+    pdf.cell(0, 9, f"{icon}  SENTIMENT: {label}{confidence_pct}", 0, 1, 'L')
+    pdf.ln(5)
+
+    # Draw Topic and candidate list (if available)
+    topic_scores = analysis_data.get('topic_scores', [])
+    if topic_scores:
+        pdf.set_font('DejaVu', 'B', 10)
+        pdf.set_text_color(60, 60, 60)
+        pdf.cell(0, 7, "Topic Classification:", 0, 1)
+        pdf.ln(1)
+        
+        for t in topic_scores:
+            t_label = t.get('label', 'N/A')
+            t_score = t.get('score', 0.0)
+            
+            # Print label and percentage
+            pdf.set_font('DejaVu', '', 9)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(50, 6, t_label, 0, 0)
+            pdf.cell(20, 6, f"{t_score * 100:.0f}%", 0, 0, 'R')
+            
+            # Draw horizontal bar chart
+            bar_x = 85
+            bar_y = pdf.get_y() + 1.5
+            bar_width = 110
+            bar_height = 3
+            
+            # Background bar
+            pdf.set_fill_color(229, 231, 235)
+            pdf.rect(bar_x, bar_y, bar_width, bar_height, 'F')
+            
+            # Active bar
+            pdf.set_fill_color(59, 130, 246)
+            pdf.rect(bar_x, bar_y, bar_width * t_score, bar_height, 'F')
+            pdf.ln(6)
+        pdf.ln(3)
+    else:
+        _add_entry(pdf, "Topic:", analysis_data.get('topic_classification', 'N/A'))
+
     _add_entry(pdf, "Summary:", analysis_data.get('text_summary', 'N/A'))
 
     # Step 6: Image Analysis section — green accent bar
