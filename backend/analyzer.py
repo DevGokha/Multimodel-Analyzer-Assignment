@@ -100,7 +100,7 @@ def analyze_sentiment(text: str):
     warm_model = models_registry["sentiment"]
     model = warm_model.load_and_get()
     
-    result = model(text)[0]
+    result = model(text, truncation=True)[0]
     
     warm_model.release_after_use()
     return {"label": result['label'], "score": result['score']}
@@ -114,7 +114,7 @@ def summarize_text(text: str):
     warm_model = models_registry["summarizer"]
     model = warm_model.load_and_get()
     
-    result = model(text, max_length=50, min_length=20, do_sample=False)
+    result = model(text, max_length=50, min_length=20, do_sample=False, truncation=True)
     
     warm_model.release_after_use()
     return result[0]['summary_text']
@@ -129,7 +129,7 @@ def classify_topic(text: str, topics=None):
     warm_model = models_registry["topic"]
     model = warm_model.load_and_get()
     
-    result = model(text, candidate_labels=topics)
+    result = model(text, candidate_labels=topics, truncation=True)
     
     warm_model.release_after_use()
     return {"labels": result['labels'], "scores": result['scores']}
