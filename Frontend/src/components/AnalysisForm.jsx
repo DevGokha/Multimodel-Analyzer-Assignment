@@ -2,8 +2,8 @@ import React from 'react';
 import ImageDropZone from './ImageDropZone';
 
 export default function AnalysisForm({
-  text, setText, customTopics, setCustomTopics, images, setImages, imagePreviews, setImagePreviews,
-  isDragging, setIsDragging, fileInputRef, handleImageChange, handleRemoveImage, handleDragOver, handleDragLeave, handleDrop, handleSubmit, isLoading
+  text, setText, customTopics, setCustomTopics, images, imagePreviews,
+  isDragging, fileInputRef, handleImageChange, handleRemoveImage, handleDragOver, handleDragLeave, handleDrop, handleSubmit, isLoading
 }) {
   return (
     <form onSubmit={handleSubmit}>
