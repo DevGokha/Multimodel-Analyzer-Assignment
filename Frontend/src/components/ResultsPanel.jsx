@@ -39,20 +39,69 @@ export default function ResultsPanel({ results, handleExport, isExporting }) {
             </div>
           )}
         </div>
-        {results.image_results && results.image_results.length > 1 ? (
-          results.image_results.map((imgRes, idx) => (
-            <div className="result-card" key={idx}>
-              <h3>Image {idx + 1}: {imgRes.filename}</h3>
-              <p><strong>Category:</strong> {imgRes.image_classification}</p>
-              <p><strong>OCR:</strong> {imgRes.ocr_text || 'None'}</p>
-            </div>
-          ))
-        ) : (
-          <>
-            <div className="result-card"><h3>Image Category</h3><p>{results.image_classification}</p></div>
-            <div className="result-card"><h3>OCR Text</h3><p>{results.ocr_text || 'None'}</p></div>
-          </>
-        )}
+        {(() => {
+          const renderTags = (tags) => {
+            if (!tags || tags.length === 0) return null;
+            return (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '10px' }}>
+                {tags.map((tag, tIdx) => {
+                  let bg = 'rgba(59, 130, 246, 0.1)';
+                  let border = 'rgba(59, 130, 246, 0.2)';
+                  let color = '#3b82f6';
+                  
+                  if (tag.includes('⚠️')) {
+                    bg = 'rgba(239, 68, 68, 0.1)';
+                    border = 'rgba(239, 68, 68, 0.2)';
+                    color = '#ef4444';
+                  } else if (tag.includes('🏷️')) {
+                    bg = 'rgba(16, 185, 129, 0.1)';
+                    border = 'rgba(16, 185, 129, 0.2)';
+                    color = '#10b981';
+                  }
+                  
+                  return (
+                    <span 
+                      key={tIdx} 
+                      style={{ 
+                        fontSize: '10px', 
+                        fontWeight: 'bold', 
+                        padding: '2px 8px', 
+                        borderRadius: '10px', 
+                        backgroundColor: bg, 
+                        border: `1px solid ${border}`,
+                        color: color,
+                        display: 'inline-flex',
+                        alignItems: 'center'
+                      }}
+                    >
+                      {tag}
+                    </span>
+                  );
+                })}
+              </div>
+            );
+          };
+
+          return results.image_results && results.image_results.length > 1 ? (
+            results.image_results.map((imgRes, idx) => (
+              <div className="result-card" key={idx}>
+                <h3>Image {idx + 1}: {imgRes.filename}</h3>
+                <p><strong>Category:</strong> {imgRes.image_classification}</p>
+                <p><strong>OCR:</strong> {imgRes.ocr_text || 'None'}</p>
+                {renderTags(imgRes.ocr_tags)}
+              </div>
+            ))
+          ) : (
+            <>
+              <div className="result-card"><h3>Image Category</h3><p>{results.image_classification}</p></div>
+              <div className="result-card">
+                <h3>OCR Text</h3>
+                <p>{results.ocr_text || 'None'}</p>
+                {results.image_results && results.image_results[0] && renderTags(results.image_results[0].ocr_tags)}
+              </div>
+            </>
+          );
+        })()}
         <div className="result-card full-width"><h3>Text Summary</h3><p>{results.text_summary}</p></div>
         <div className="result-card toxicity-warning"><h3>Toxicity</h3><p>{results.toxicity_warning}</p></div>
         <div className="result-card automated-response"><h3>Automated Response</h3><p>{results.automated_response}</p></div>

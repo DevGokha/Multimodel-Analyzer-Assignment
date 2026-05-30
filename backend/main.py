@@ -29,7 +29,7 @@ MAX_TEXT_LENGTH = 10000
 MAX_FILE_SIZE_MB = 10
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"}
-executor = ThreadPoolExecutor(max_workers=1)
+executor = ThreadPoolExecutor(max_workers=4)
 
 app = FastAPI()
 
@@ -53,10 +53,37 @@ app.add_middleware(
 )
 
 
+import re
+
+def extract_ocr_tags(text: str) -> List[str]:
+    if not text:
+        return []
+    
+    safety_triggers = {"toxic", "hate", "idiot", "stupid", "garbage", "bad", "abuse", "scam"}
+    business_entities = {"invoice", "billing", "amount", "payment", "price", "card", "charge", "product", "support", "tech", "smartwatch", "device"}
+    
+    words = re.findall(r'\b\w+\b', text.lower())
+    tags = []
+    
+    for word in words:
+        if word in safety_triggers and f"⚠️ {word}" not in tags:
+            tags.append(f"⚠️ {word}")
+        elif word in business_entities and f"🏷️ {word}" not in tags:
+            tags.append(f"🏷️ {word}")
+            
+    uppercase_words = re.findall(r'\b[A-Z]{3,}\b', text)
+    for word in uppercase_words:
+        if f"🔍 {word}" not in tags:
+            tags.append(f"🔍 {word}")
+            
+    return tags[:6]
+
+
 class ImageResult(BaseModel):
     filename: str = "Image file name."
     image_classification: str = "Predicted image category label."
     ocr_text: str = "Text extracted from image (OCR)."
+    ocr_tags: List[str] = []
 
 
 class TopicScore(BaseModel):
@@ -160,26 +187,43 @@ async def analyze_data(
         logger.error(f"Text toxicity check failed: {e}")
         raise HTTPException(status_code=500, detail="Toxicity check failed on input text.")
 
-    # Step 3e: Process each image sequentially — classify then OCR
+    # Step 3e: Process all images concurrently using parallel grouping
+    try:
+        cls_tasks = [
+            loop.run_in_executor(executor, analyzer.classify_image, img_data["bytes"])
+            for img_data in image_data_list
+        ]
+        cls_raw_results = await asyncio.gather(*cls_tasks)
+    except Exception as e:
+        logger.error(f"Concurrent image classification failed: {e}")
+        cls_raw_results = ["Classification failed"] * len(image_data_list)
+
+    try:
+        ocr_tasks = [
+            loop.run_in_executor(executor, analyzer.extract_text_from_image, img_data["bytes"])
+            for img_data in image_data_list
+        ]
+        ocr_raw_results = await asyncio.gather(*ocr_tasks)
+    except Exception as e:
+        logger.error(f"Concurrent image OCR failed: {e}")
+        ocr_raw_results = [""] * len(image_data_list)
+
     image_results = []
     all_ocr_texts = []
-    for img_data in image_data_list:
-        try:
-            cls_result = await loop.run_in_executor(executor, analyzer.classify_image, img_data["bytes"])
-        except Exception as e:
-            logger.error(f"Image classification failed for {img_data['filename']}: {e}")
-            cls_result = "Classification failed"
-        try:
-            ocr_result = await loop.run_in_executor(executor, analyzer.extract_text_from_image, img_data["bytes"])
-        except Exception as e:
-            logger.error(f"OCR failed for {img_data['filename']}: {e}")
-            ocr_result = ""
+    for idx, img_data in enumerate(image_data_list):
+        cls_result = cls_raw_results[idx]
+        ocr_result = ocr_raw_results[idx]
+        extracted_text = str(ocr_result) if not isinstance(ocr_result, Exception) else ""
+        classification = str(cls_result) if not isinstance(cls_result, Exception) else "Classification failed"
+        tags = extract_ocr_tags(extracted_text)
+        
         image_results.append(ImageResult(
             filename=img_data["filename"] or "image",
-            image_classification=cls_result.split(',')[0] if isinstance(cls_result, str) else str(cls_result),
-            ocr_text=ocr_result,
+            image_classification=classification.split(',')[0],
+            ocr_text=extracted_text,
+            ocr_tags=tags,
         ))
-        all_ocr_texts.append(ocr_result)
+        all_ocr_texts.append(extracted_text)
 
     # Step 4: Run OCR toxicity check on combined OCR text from all images
     combined_ocr = " ".join(all_ocr_texts)
@@ -318,32 +362,44 @@ async def analyze_stream(
 
         # Step 5: Classifying images...
         yield f"data: {json.dumps({'status': 'processing', 'step': 5, 'message': 'Classifying images...'})}\n\n"
-        image_results = []
-        all_ocr_texts = []
-        for img_data in image_data_list:
-            try:
-                cls_result = await loop.run_in_executor(executor, analyzer.classify_image, img_data["bytes"])
-            except Exception as e:
-                logger.error(f"Image classification failed for {img_data['filename']}: {e}")
-                cls_result = "Classification failed"
-            image_results.append(cls_result)
+        try:
+            cls_tasks = [
+                loop.run_in_executor(executor, analyzer.classify_image, img_data["bytes"])
+                for img_data in image_data_list
+            ]
+            cls_raw_results = await asyncio.gather(*cls_tasks)
+        except Exception as e:
+            logger.error(f"Concurrent image classification failed: {e}")
+            cls_raw_results = ["Classification failed"] * len(image_data_list)
 
         # Step 6: Extracting text from images (OCR)...
         yield f"data: {json.dumps({'status': 'processing', 'step': 6, 'message': 'Extracting text from images (OCR)...'})}\n\n"
+        try:
+            ocr_tasks = [
+                loop.run_in_executor(executor, analyzer.extract_text_from_image, img_data["bytes"])
+                for img_data in image_data_list
+            ]
+            ocr_raw_results = await asyncio.gather(*ocr_tasks)
+        except Exception as e:
+            logger.error(f"Concurrent image OCR failed: {e}")
+            ocr_raw_results = [""] * len(image_data_list)
+
         final_image_results = []
+        all_ocr_texts = []
         for idx, img_data in enumerate(image_data_list):
-            try:
-                ocr_result = await loop.run_in_executor(executor, analyzer.extract_text_from_image, img_data["bytes"])
-            except Exception as e:
-                logger.error(f"OCR failed for {img_data['filename']}: {e}")
-                ocr_result = ""
-            cls_result = image_results[idx]
+            cls_result = cls_raw_results[idx]
+            ocr_result = ocr_raw_results[idx]
+            extracted_text = str(ocr_result) if not isinstance(ocr_result, Exception) else ""
+            classification = str(cls_result) if not isinstance(cls_result, Exception) else "Classification failed"
+            tags = extract_ocr_tags(extracted_text)
+            
             final_image_results.append(ImageResult(
                 filename=img_data["filename"] or "image",
-                image_classification=cls_result.split(',')[0] if isinstance(cls_result, str) else str(cls_result),
-                ocr_text=ocr_result,
+                image_classification=classification.split(',')[0],
+                ocr_text=extracted_text,
+                ocr_tags=tags,
             ))
-            all_ocr_texts.append(ocr_result)
+            all_ocr_texts.append(extracted_text)
 
         # Step 7: Generating response...
         yield f"data: {json.dumps({'status': 'processing', 'step': 7, 'message': 'Generating response...'})}\n\n"
