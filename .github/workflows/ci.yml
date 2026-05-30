@@ -22,7 +22,7 @@ jobs:
         run: |
           python -m venv venv
           . venv/bin/activate
-          pip install -r requirements.txt
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
       - name: Run backend tests
         run: |
           . venv/bin/activate
