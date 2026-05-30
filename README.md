@@ -29,11 +29,11 @@ graph TD
   User([User Interaction]) <--> |React 19 Dashboard| FE[Frontend - React/Vite]
   FE --> |SSE Stream Request| API[FastAPI Gateway]
   
-  subgraph Backend API Services (Hugging Face Spaces Docker)
+  subgraph "Backend API Services (Hugging Face Spaces Docker)"
     API --> |Concurrent Event Loop| AsyncPipe[Async Inference Handler]
     AsyncPipe --> |asyncio.gather| ThreadPool[ThreadPoolExecutor]
     
-    subgraph Model Registry & Caching Manager
+    subgraph "Model Registry & Caching Manager"
       ThreadPool --> |Dynamic Fetch| Cache{Warm-Cache TTL?}
       Cache --> |Hit| Run[Fast Inference]
       Cache --> |Miss| Load[Load & Evict Stale]
