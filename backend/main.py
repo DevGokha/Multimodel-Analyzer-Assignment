@@ -41,7 +41,8 @@ app.state.limiter = limiter
 
 origins = [
     "http://localhost:3000",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "https://multimodel-analyzer-assignment.vercel.app"
 ]
 
 app.add_middleware(
