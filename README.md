@@ -9,15 +9,15 @@ An enterprise-grade, full-stack intelligence dashboard for analyzing text and im
 
 ---
 
-## 🚀 Key Architectural Upgrades (Data Scientist Showcases)
+## 🚀 Key Architectural Upgrades (Production-Ready Design)
 
 This repository is built using production-ready engineering patterns designed to show recruiters and interviewers high-level system design expertise:
 
 *   **⚡ Concurrent Multi-Image Processing**: Speeds up inference by **50%–70%** for multi-image uploads. Uses an asynchronous thread pool to schedule independent classification (ViT) and text extraction (EasyOCR) tasks concurrently via `asyncio.gather`.
-*   **🧠 Smart Memory Warm-Caching (TTL)**: Enables sub-second inference speeds while keeping a minimal RAM footprint. Models are loaded dynamically on-demand and kept warm in memory with a thread-safe **5-minute sliding TTL eviction timer**, preventing Out-Of-Memory (OOM) crashes on free-tier 16GB RAM constraints.
-*   **📡 Real-Time SSE Stream Updates**: streams actual pipeline milestones (e.g. *"OCR extraction complete"*, *"Image #1 sentiment finished"*) directly from FastAPI to the React UI in real time using **Server-Sent Events (SSE)**. No arbitrary loading guess-timers.
+*   **🧠 Smart Memory Warm-Caching (TTL)**: Enables sub-second inference speeds while keeping a minimal RAM footprint. Models are loaded dynamically on-demand and kept warm in memory with a thread-safe **5-minute sliding TTL eviction timer**, preventing Out-Of-Memory (OOM) crashes under resource constraints.
+*   **📡 Real-Time SSE Stream Updates**: Streams actual pipeline milestones (e.g., *"OCR extraction complete"*, *"Image #1 sentiment finished"*) directly from FastAPI to the React UI in real time using **Server-Sent Events (SSE)**. No arbitrary loading guess-timers.
 *   **📊 Interactive Sentiment & Topic Visualizations**: Features a dynamic SVG-based Sentiment Radial Gauge and horizontal candidate topic prediction bar charts with confidence intervals.
-*   **🏷️ Visual OCR Keyword Scanning & Highlighting**: Scans easyocr output to extract and highlight Safety Warnings (`⚠️`), Business Metrics (`🏷️`), and custom tags into inline badge widgets.
+*   **🏷️ Visual OCR Keyword Scanning & Highlighting**: Scans EasyOCR output to extract and highlight Safety Warnings (`⚠️`), Business Metrics (`🏷️`), and custom tags into inline badge widgets.
 *   **🎨 Premium PDF Report Generator**: Generates high-end PDF reports with dynamic background headers (emerald green for POSITIVE, rose red for NEGATIVE) and matching visual topic charts.
 
 ---
@@ -64,7 +64,7 @@ docker-compose up --build
 
 ---
 
-### 💻 Method B: Manual Manual Installation
+### 💻 Method B: Manual Installation
 
 #### 1. Setup Backend
 ```bash
@@ -109,7 +109,7 @@ Our monorepo features a root-level `Dockerfile` and dynamic Vite configurations,
 *   **Frontend (Vercel)**: Import your repo, set the root directory to `Frontend`, and inject the environment variable `VITE_API_URL` pointing to your Hugging Face Space URL.
 
 > [!TIP]
-> See the complete step-by-step [deployment_guide.md](file:///C:/Users/DEV/.gemini/antigravity-ide/brain/70c68ad3-1d85-4eb3-9470-8e1d1d5a58e9/deployment_guide.md) file inside the project directory for full walkthrough commands, Git remote pushes, and setup guides.
+> See the complete step-by-step [deployment_guide.md](./deployment_guide.md) file inside the project directory for full walkthrough commands, Git remote pushes, and setup guides.
 
 ---
 
@@ -119,6 +119,7 @@ Multimodel-Analyzer-Assignment/
 │
 ├── Dockerfile                      # Root Docker entrypoint for HF Space
 ├── docker-compose.yml              # Container orchestration for dev
+├── deployment_guide.md             # Enterprise cloud deployment instructions
 ├── backend/                        # Backend (FastAPI, PyTorch Inference)
 │   ├── analyzer.py                 # Warm-Caching & Model registry pipelines
 │   ├── main.py                     # FastAPI API, SSE streams, concurrency
