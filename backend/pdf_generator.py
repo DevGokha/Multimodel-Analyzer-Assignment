@@ -1,4 +1,5 @@
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 from datetime import datetime
 import os
 import re
@@ -15,29 +16,38 @@ def create_report(analysis_data: dict) -> bytes:
 
     # Step 2: Register Unicode-capable DejaVu fonts from the fonts/ directory
     font_dir = os.path.join(os.path.dirname(__file__), 'fonts')
-    pdf.add_font('DejaVu', '', os.path.join(font_dir, 'DejaVuSans.ttf'), uni=True)
-    pdf.add_font('DejaVu', 'B', os.path.join(font_dir, 'DejaVuSans-Bold.ttf'), uni=True)
+    font_family = 'DejaVu'
+    try:
+        # FPDF2 automatically handles unicode, 'uni=True' is deprecated and removed
+        pdf.add_font('DejaVu', '', os.path.join(font_dir, 'DejaVuSans.ttf'))
+        pdf.add_font('DejaVu', 'B', os.path.join(font_dir, 'DejaVuSans-Bold.ttf'))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Failed to load custom DejaVu fonts: {e}. Falling back to standard Helvetica."
+        )
+        font_family = 'Helvetica'
 
     pdf.add_page()
 
     # Step 3: Draw a branded header bar (full-width blue banner across the top)
     pdf.set_fill_color(0, 123, 255)
     pdf.rect(0, 0, 210, 35, 'F')
-    pdf.set_font('DejaVu', 'B', 20)
+    pdf.set_font(font_family, 'B', 20)
     pdf.set_text_color(255, 255, 255)
     pdf.set_y(8)
-    pdf.cell(0, 12, 'Multimodal Analysis Report', 0, 1, 'C')
+    pdf.cell(0, 12, 'Multimodal Analysis Report', 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='C')
 
     # Step 4: Add the generation timestamp below the header
     pdf.set_y(40)
     timestamp = datetime.now().strftime("%d %B %Y, %I:%M %p")
-    pdf.set_font('DejaVu', '', 9)
+    pdf.set_font(font_family, '', 9)
     pdf.set_text_color(128, 128, 128)
-    pdf.cell(0, 8, f'Report generated on: {timestamp}', 0, 1, 'R')
+    pdf.cell(0, 8, f'Report generated on: {timestamp}', 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='R')
     pdf.ln(5)
 
     # Step 5: Text Analysis section — blue accent bar
-    _draw_section_header(pdf, 'Text Analysis', (41, 128, 185))
+    _draw_section_header(pdf, 'Text Analysis', (41, 128, 185), font_family)
     # Parse and Draw Sentiment Banner
     sentiment_str = analysis_data.get('text_sentiment', 'N/A')
     match = re.search(r'\(([0-9.]+)\)', sentiment_str)
@@ -67,18 +77,18 @@ def create_report(analysis_data: dict) -> bytes:
 
     pdf.set_y(current_y + 3)
     pdf.set_x(15)
-    pdf.set_font('DejaVu', 'B', 11)
+    pdf.set_font(font_family, 'B', 11)
     pdf.set_text_color(fg_r, fg_g, fg_b)
     confidence_pct = f" ({score * 100:.0f}% confidence)" if score is not None else ""
-    pdf.cell(0, 9, f"{icon}  SENTIMENT: {label}{confidence_pct}", 0, 1, 'L')
+    pdf.cell(0, 9, f"{icon}  SENTIMENT: {label}{confidence_pct}", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align='L')
     pdf.ln(5)
 
     # Draw Topic and candidate list (if available)
     topic_scores = analysis_data.get('topic_scores', [])
     if topic_scores:
-        pdf.set_font('DejaVu', 'B', 10)
+        pdf.set_font(font_family, 'B', 10)
         pdf.set_text_color(60, 60, 60)
-        pdf.cell(0, 7, "Topic Classification:", 0, 1)
+        pdf.cell(0, 7, "Topic Classification:", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
         
         for t in topic_scores:
@@ -86,10 +96,10 @@ def create_report(analysis_data: dict) -> bytes:
             t_score = t.get('score', 0.0)
             
             # Print label and percentage
-            pdf.set_font('DejaVu', '', 9)
+            pdf.set_font(font_family, '', 9)
             pdf.set_text_color(80, 80, 80)
-            pdf.cell(50, 6, t_label, 0, 0)
-            pdf.cell(20, 6, f"{t_score * 100:.0f}%", 0, 0, 'R')
+            pdf.cell(50, 6, t_label, 0, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.cell(20, 6, f"{t_score * 100:.0f}%", 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align='R')
             
             # Draw horizontal bar chart
             bar_x = 85
@@ -107,41 +117,41 @@ def create_report(analysis_data: dict) -> bytes:
             pdf.ln(6)
         pdf.ln(3)
     else:
-        _add_entry(pdf, "Topic:", analysis_data.get('topic_classification', 'N/A'))
+        _add_entry(pdf, "Topic:", analysis_data.get('topic_classification', 'N/A'), font_family)
 
-    _add_entry(pdf, "Summary:", analysis_data.get('text_summary', 'N/A'))
+    _add_entry(pdf, "Summary:", analysis_data.get('text_summary', 'N/A'), font_family)
 
     # Step 6: Image Analysis section — green accent bar
-    _draw_section_header(pdf, 'Image Analysis', (39, 174, 96))
+    _draw_section_header(pdf, 'Image Analysis', (39, 174, 96), font_family)
     # Step 6a: If multiple images were analyzed, render each one separately
     image_results = analysis_data.get('image_results', [])
     if image_results:
         for i, img_result in enumerate(image_results, 1):
-            _add_entry(pdf, f"Image {i} ({img_result.get('filename', 'unknown')}):", "")
-            _add_entry(pdf, "  Classification:", img_result.get('image_classification', 'N/A'))
+            _add_entry(pdf, f"Image {i} ({img_result.get('filename', 'unknown')}):", "", font_family)
+            _add_entry(pdf, "  Classification:", img_result.get('image_classification', 'N/A'), font_family)
             ocr = img_result.get('ocr_text') or "No text found."
-            _add_entry(pdf, "  Extracted Text (OCR):", ocr)
+            _add_entry(pdf, "  Extracted Text (OCR):", ocr, font_family)
     else:
         # Step 6b: Fallback for single-image backward compatibility
-        _add_entry(pdf, "Classification:", analysis_data.get('image_classification', 'N/A'))
+        _add_entry(pdf, "Classification:", analysis_data.get('image_classification', 'N/A'), font_family)
         ocr_text = analysis_data.get('ocr_text') or "No text found."
-        _add_entry(pdf, "Extracted Text (OCR):", ocr_text)
+        _add_entry(pdf, "Extracted Text (OCR):", ocr_text, font_family)
 
     # Step 7: Final Assessment section — red accent bar
-    _draw_section_header(pdf, 'Final Assessment', (231, 76, 60))
-    _add_entry(pdf, "Toxicity Warning:", analysis_data.get('toxicity_warning', 'N/A'))
-    _add_entry(pdf, "System Response:", analysis_data.get('automated_response', 'N/A'))
+    _draw_section_header(pdf, 'Final Assessment', (231, 76, 60), font_family)
+    _add_entry(pdf, "Toxicity Warning:", analysis_data.get('toxicity_warning', 'N/A'), font_family)
+    _add_entry(pdf, "System Response:", analysis_data.get('automated_response', 'N/A'), font_family)
 
     # Step 8: Footer at the bottom of the page
     pdf.set_y(-20)
-    pdf.set_font('DejaVu', '', 8)
+    pdf.set_font(font_family, '', 8)
     pdf.set_text_color(160, 160, 160)
-    pdf.cell(0, 10, 'Generated by Multimodal Analyzer', 0, 0, 'C')
+    pdf.cell(0, 10, 'Generated by Multimodal Analyzer', 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align='C')
 
     return bytes(pdf.output())
 
 
-def _draw_section_header(pdf, title, color):
+def _draw_section_header(pdf, title, color, font_family='DejaVu'):
     """
     Step helper: Draw a small colored accent bar on the left and the section title.
     Each section gets its own color for visual distinction in the report.
@@ -150,22 +160,22 @@ def _draw_section_header(pdf, title, color):
     pdf.set_fill_color(r, g, b)
     pdf.rect(10, pdf.get_y(), 4, 10, 'F')
     pdf.set_x(18)
-    pdf.set_font('DejaVu', 'B', 13)
+    pdf.set_font(font_family, 'B', 13)
     pdf.set_text_color(r, g, b)
-    pdf.cell(0, 10, title, 0, 1)
+    pdf.cell(0, 10, title, 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(2)
 
 
-def _add_entry(pdf, label, value):
+def _add_entry(pdf, label, value, font_family='DejaVu'):
     """
     Step helper: Add a labeled entry (bold label on one line, value below it).
     Uses DejaVu font for full Unicode character support.
     """
-    pdf.set_font('DejaVu', 'B', 10)
+    pdf.set_font(font_family, 'B', 10)
     pdf.set_text_color(60, 60, 60)
-    pdf.cell(0, 7, label, 0, 1)
+    pdf.cell(0, 7, label, 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    pdf.set_font('DejaVu', '', 10)
+    pdf.set_font(font_family, '', 10)
     pdf.set_text_color(80, 80, 80)
     pdf.multi_cell(0, 6, str(value))
     pdf.ln(4)

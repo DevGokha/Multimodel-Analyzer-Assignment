@@ -440,7 +440,7 @@ async def analyze_stream(
             "ocr_text": final_image_results[0].ocr_text if final_image_results else "",
             "toxicity_warning": toxicity_warning,
             "automated_response": automated_response,
-            "image_results": [img.dict() for img in final_image_results],
+            "image_results": [img.model_dump() for img in final_image_results],
             "topic_scores": topic_scores,
         }
         yield f"data: {json.dumps({'status': 'completed', 'results': response_payload})}\n\n"
@@ -454,7 +454,7 @@ async def generate_report(analysis_data: AnalysisResponse):
     """
     # Step 8: Wrap PDF generation in error handling
     try:
-        pdf_bytes = pdf_generator.create_report(analysis_data.dict())
+        pdf_bytes = pdf_generator.create_report(analysis_data.model_dump())
     except Exception as e:
         logger.error(f"PDF report generation failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate the PDF report. Please try again.")
